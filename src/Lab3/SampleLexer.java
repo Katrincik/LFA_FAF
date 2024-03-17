@@ -17,22 +17,26 @@ class Token {
         this.value = value;
     }
 
+    // Overrides the default toString method to print token in a readable format
     @Override
     public String toString() {
         return type + "('" + value + "')";
     }
 }
 
+// Lexer class responsible for converting a string of characters into a list of tokens
 class Lexer {
     private final String input;
     private int pos = 0;
     private char currentChar;
 
+    // Constructor initializes the lexer with input and sets the first character
     Lexer(String input) {
-        this.input = input + '\0'; // Sentinel character to indicate end of input
+        this.input = input + '\0';
         currentChar = input.charAt(pos);
     }
 
+    // Advances the position in the input and updates the current character
     void advance() {
         pos++;
         if (pos >= input.length()) {
@@ -84,10 +88,12 @@ class Lexer {
         return token;
     }
 
+    // Tokenize the entire input string and returns a list of tokens
     List<Token> tokenize() {
         List<Token> tokens = new ArrayList<>();
 
         while (currentChar != '\0') {
+            // Handle different character types to tokenize the input.
             if (Character.isWhitespace(currentChar)) {
                 skipWhitespace();
                 continue;
@@ -118,10 +124,11 @@ class Lexer {
                 continue;
             }
 
-            // Handle unexpected characters
+            // Handle unexpected characters and throw an exception
             throw new RuntimeException("Unexpected character: " + currentChar);
         }
 
+        // Add an EOF token at the end of the token list
         tokens.add(new Token(TokenType.EOF, ""));
         return tokens;
     }
