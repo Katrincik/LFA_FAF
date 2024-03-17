@@ -10,4 +10,4 @@ LFA laboratories are about:
 
 - **Second laborator**y - _Determinism in Finite Automata. Conversion from NDFA 2 DFA. Chomsky Hierarchy._
 
-- - **Third laborator**y - _Lexer & Scanner._
+- **Third laborator**y - _Lexer & Scanner._
