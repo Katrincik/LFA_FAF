@@ -21,7 +21,7 @@ public class CNFNormalizer {
         eliminateRenaming();
         eliminateNonProductiveSymbols();
         eliminateInaccessibleSymbols();
-        //convertToCNF();
+        convertToCNF();
 
         return productions;
     }
@@ -89,31 +89,39 @@ public class CNFNormalizer {
     }
 
     private void eliminateRenaming() {
-        // Initialize a new map to store the updated set of productions without renaming rules
-        Map<String, List<String>> newProductions = new HashMap<>();
+        boolean changesMade;
+        do {
+            changesMade = false;
+            Map<String, List<String>> newProductions = new HashMap<>();
 
-        for (String nonTerminal : productions.keySet()) {
-            // Create a copy of the current productions for this non-terminal
-            List<String> currentProductions = new ArrayList<>(productions.get(nonTerminal));
-            // Initialize a list to store the new set of productions for this non-terminal, after eliminating renaming
-            List<String> toAdd = new ArrayList<>();
+            for (String nonTerminal : productions.keySet()) {
+                // Create a copy of the current productions for this non-terminal
+                List<String> currentProductions = new ArrayList<>(productions.get(nonTerminal));
+                // Initialize a list to store the new set of productions for this non-terminal, after eliminating renaming
+                List<String> toAdd = new ArrayList<>();
 
-            for (String production : currentProductions) {
-                if (production.length() == 1 && nonTerminals.contains(production)) {
-                    // Instead of modifying currentProductions, store changes to apply later
-                    toAdd.addAll(productions.get(production));
-                } else {
-                    toAdd.add(production);
+                for (String production : currentProductions) {
+                    if (production.length() == 1 && nonTerminals.contains(production)) {
+                        // Add productions from the renaming non-terminal if not already present
+                        for (String redirectedProduction : productions.get(production)) {
+                            if (!currentProductions.contains(redirectedProduction) && !toAdd.contains(redirectedProduction)) {
+                                toAdd.add(redirectedProduction);
+                                changesMade = true; // A change was made, so we'll need to recheck
+                            }
+                        }
+                    } else {
+                        toAdd.add(production);
+                    }
                 }
+
+                // Deduplicate and store in newProductions
+                newProductions.put(nonTerminal, new ArrayList<>(new HashSet<>(toAdd)));
             }
 
-            // Deduplicate and store in newProductions
-            newProductions.put(nonTerminal, new ArrayList<>(new HashSet<>(toAdd)));
-        }
-
-        // Replace old productions with updated ones
-        productions.clear();
-        productions.putAll(newProductions);
+            // Replace old productions with updated ones
+            productions.clear();
+            productions.putAll(newProductions);
+        } while (changesMade);
     }
 
     private void eliminateNonProductiveSymbols() {
@@ -175,6 +183,94 @@ public class CNFNormalizer {
         }
 
         productions.keySet().retainAll(accessible);
+    }
+
+    private void convertToCNF() {
+        Map<String, String> terminalReplacements = new HashMap<>();
+        // Track existing transformations
+        Map<String, String> productionReplacements = new HashMap<>();
+        // Prepare a list of new non-terminals to use for terminal replacements
+        List<Character> newNonTerminals = Arrays.asList('Ш', 'Щ', 'Ч', 'Ц', 'Ж', 'Й',
+                'Ъ', 'Э', 'Ю', 'Б', 'Ь', 'Г', 'Ы', 'П', 'Я', 'И');
+        int newNonTerminalIndex = 0;
+
+        // First pass: Replace terminal symbols in RHS of productions with new non-terminals
+        Map<String, List<String>> newProductions = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : productions.entrySet()) {
+            List<String> modifiedProductions = new ArrayList<>();
+            for (String production : entry.getValue()) {
+                // Check if production is a single terminal and should be kept as is
+                if (production.length() == 1 && terminals.contains(production)) {
+                    modifiedProductions.add(production);
+                    continue;
+                }
+
+                StringBuilder newProduction = new StringBuilder();
+                for (int i = 0; i < production.length(); i++) {
+                    String symbol = String.valueOf(production.charAt(i));
+                    if (terminals.contains(symbol)) {
+                        terminalReplacements.putIfAbsent(symbol, String.valueOf(newNonTerminals.get(newNonTerminalIndex)));
+                        newProduction.append(terminalReplacements.get(symbol));
+                        if (terminalReplacements.size() > newNonTerminalIndex) {
+                            newNonTerminalIndex = Math.min(newNonTerminalIndex + 1, newNonTerminals.size() - 1);
+                        }
+                    } else {
+                        newProduction.append(symbol);
+                    }
+                }
+                modifiedProductions.add(newProduction.toString());
+            }
+            newProductions.put(entry.getKey(), modifiedProductions);
+        }
+
+        // Add terminal replacements to productions
+        Map<String, List<String>> finalNewProductions = newProductions;
+        terminalReplacements.forEach((terminal, newNonTerminal) ->
+                finalNewProductions.putIfAbsent(newNonTerminal, Collections.singletonList(terminal)));
+
+        // Second pass: Ensure productions are binary or unary, without repeating transformations
+        productions.clear();
+        // Use the finalNewProductions from the first pass
+        productions.putAll(finalNewProductions);
+        newProductions = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : productions.entrySet()) {
+            List<String> updatedProductions = new ArrayList<>();
+            for (String production : entry.getValue()) {
+                if (production.length() > 2) {
+                    // Corrected handling for productions longer than two symbols
+                    String remainingProduction = production;
+                    while (remainingProduction.length() > 2) {
+                        String firstTwoSymbols = remainingProduction.substring(0, 2);
+                        remainingProduction = remainingProduction.substring(2);
+
+                        // Check if we already have a replacement for the first two symbols
+                        String newSymbol = productionReplacements.getOrDefault(firstTwoSymbols,
+                                String.valueOf(newNonTerminals.get(newNonTerminalIndex)));
+                        if (!productionReplacements.containsKey(firstTwoSymbols)) {
+                            // If no existing replacement, update mappings and productions
+                            productionReplacements.put(firstTwoSymbols, newSymbol);
+                            newProductions.putIfAbsent(newSymbol, new ArrayList<>());
+                            newProductions.get(newSymbol).add(firstTwoSymbols);
+
+                            // Move to the next non-terminal if possible
+                            if (newNonTerminalIndex < newNonTerminals.size() - 1) {
+                                newNonTerminalIndex++;
+                            }
+                        }
+
+                        // Update the remaining production to include the new non-terminal symbol
+                        remainingProduction = newSymbol + remainingProduction;
+                    }
+                    updatedProductions.add(remainingProduction);
+                } else {
+                    // For unary or binary productions, just add them without modification
+                    updatedProductions.add(production);
+                }
+            }
+            newProductions.put(entry.getKey(), updatedProductions);
+        }
+        productions.clear();
+        productions.putAll(newProductions);
     }
 
     public static void main(String[] args) {
